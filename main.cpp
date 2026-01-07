@@ -37,6 +37,7 @@ struct Player
 	float direction;
 	int size=10;
 	int range;
+	int status = 0; // 0:初始狀態 1:發射中 2:已發射
 	Drag drag[10];
 	int texture;
 	unsigned int color;
@@ -49,25 +50,42 @@ const int interceptorTime = 240;
 struct Target
 {
 	Vector2 position;
-	int size;
-	int hp;
+	int size=10;
+	int hp=3;
 	int texture;
-	unsigned int color;
+	unsigned int color=BLACK;
 };
 Target target;
 
 struct Stage
 {
 	int maxInterceptorCount = 3;
+	Vector2 targetPosition[5] ;
 };
 Stage stage[7];
 int currentStage = 0;
 
+int Hit(Player a,Target b)
+{
+	float dx = a.position.x - b.position.x;
+	float dy = a.position.y - b.position.y;
+	float distance = sqrtf(dx * dx + dy * dy);
+	if (distance < (a.range + b.size))
+	{
+		return 1;
+	}
+	else 
+	{
+		return 0;
+	}
+}
+
 int chargeRange = 250;
 int mouseIspressed = 0;
+int shotTrigger = 0;
 int gamePhase = 3;
 int inPhaseControll = 2;
-int IPC3_2Status = 0; //0:待機 1:発射準備 2:発射中 3:着弾
+int IPC3_2Status = 0; //0:瞄準 1:發射 飛行 2:resset to 0 3:着弾
 
 // Windowsアプリでのエントリーポイント(main関数)
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
@@ -86,6 +104,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	interceptor[2].color = RED;
 	interceptor[3].color = BLACK;
 	interceptor[4].color = WHITE;
+	stage[0].targetPosition[0] = { 200.0f,200.0f };
+	stage[0].targetPosition[1] = { 400.0f,300.0f };
+	stage[0].targetPosition[2] = { 600.0f,400.0f };
+	target.position = stage[currentStage].targetPosition[0];
+
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -168,13 +191,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			else if (inPhaseControll == 2) //main
 			{
 				float length = (float)sqrt((mouse.y - startpoint.y) * (mouse.y - startpoint.y) + (mouse.x - startpoint.x) * (mouse.x - startpoint.x));
-				/*if (!Novice::IsPressMouse(0))
+				interceptor[interceptorInCharge].direction = atan2f((float)(mouse.y - startpoint.y), (float)(mouse.x - startpoint.x));
+				if (IPC3_2Status == 0) //瞄準
 				{
-					mouseIspressed = 0;
-				}*/
-				if (IPC3_2Status == 0)
-				{
-					if (Novice::IsPressMouse(0) && length > chargeRange)
+					/*if (Novice::IsPressMouse(0) && length > chargeRange)
 					{
 						if (mouseIspressed == 1)
 						{
@@ -195,6 +215,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 						if(length > 50)
 						{
 							IPC3_2Status = 1;
+							interceptor[interceptorInCharge].status = 1;
+							interceptor[interceptorInCharge].speed = 10;
 							interceptor[interceptorInCharge].velocity.x = interceptor[interceptorInCharge].speed * -cosf(interceptor[interceptorInCharge].direction);
 							interceptor[interceptorInCharge].velocity.y = interceptor[interceptorInCharge].speed * -sinf(interceptor[interceptorInCharge].direction);
 						}
@@ -208,50 +230,117 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 							if (Novice::IsPressMouse(0))
 							{
 								mouseIspressed = 1;
-								interceptor[interceptorInCharge].speed = 10;
 							}
-							/*else if (mouseIspressed == 1)
-							{
-								interceptor[interceptorInCharge].speed = length - 50;
-								IPC3_2Status = 1;
-								mouseIspressed = 0;
-							}*/
-
+						
 						}
+					}*/
+					if (length > chargeRange && shotTrigger<2)
+					{
+						shotTrigger = 0;
+					}
+					else if (length <= chargeRange && shotTrigger < 2)
+					{
+						shotTrigger = 1;
+					}
+
+					if (shotTrigger == 2&&!Novice::IsPressMouse(0))
+					{
+						if (length > 50)
+						{
+							interceptor[interceptorInCharge].status = 1;
+							interceptor[interceptorInCharge].speed = 10;
+							interceptor[interceptorInCharge].velocity.x = interceptor[interceptorInCharge].speed * -cosf(interceptor[interceptorInCharge].direction);
+							interceptor[interceptorInCharge].velocity.y = interceptor[interceptorInCharge].speed * -sinf(interceptor[interceptorInCharge].direction);
+							IPC3_2Status = 1;
+						}
+						shotTrigger = 0;
 					}
 					
+					if (Novice::IsPressMouse(0))
+					{
+						if (shotTrigger == 1)
+						{
+							shotTrigger = 2;
+						}
+					}
+
+					if (Novice::IsPressMouse(1))
+					{
+						IPC3_2Status = 1;
+					}
 				}
-				else if(IPC3_2Status==1)
+				else if (IPC3_2Status == 1) //發射 飛行
 				{
 					for(int i=0;i< stage[currentStage].maxInterceptorCount;i++)
 					{
-						interceptor[i].position.x += interceptor[interceptorInCharge].velocity.x;
-						interceptor[i].position.y += interceptor[interceptorInCharge].velocity.y;
+						interceptor[i].position.x += interceptor[i].velocity.x;
+						interceptor[i].position.y += interceptor[i].velocity.y;
+						interceptor[i].range = interceptor[i].size + (interceptorTime - interceptorTimer)/6 ;
+						//目標命中判定
+						
+						if (Hit(interceptor[i],target))
+						{
+							IPC3_2Status = 3;
+						}
 					}
 					interceptorTimer -= 1;
+					
 					if (interceptorTimer <= 0)
 					{
 						IPC3_2Status = 2;
-						interceptorTimer = interceptorTime;
+						if (interceptorInCharge + 1 < stage[0].maxInterceptorCount)
+						{
+							interceptorInCharge += 1;
+						}
 					}
 				}
-				else if (IPC3_2Status == 2)
+				else if (IPC3_2Status == 2) //命中 時限後  Reset to 0
 				{
-					interceptorInCharge += 1;
 					interceptor[interceptorInCharge].position.x = (float)startpoint.x;
 					interceptor[interceptorInCharge].position.y = (float)startpoint.y;
+					for (int i = 0; i < stage[currentStage].maxInterceptorCount; i++)
+					{
+						if (interceptor[i].status == 1)
+						{
+							interceptor[i].position.x = (float)startpoint.x;
+							interceptor[i].position.y = (float)startpoint.y;
+							interceptor[i].range = interceptor[i].size;
+						}
+					}
+					target.hp = stage[currentStage].maxInterceptorCount;
+					target.position.x = stage[currentStage].targetPosition[stage[currentStage].maxInterceptorCount - target.hp].x;
+					target.position.y = stage[currentStage].targetPosition[stage[currentStage].maxInterceptorCount - target.hp].y;
+					interceptorTimer = interceptorTime;
+					interceptor[interceptorInCharge].range = interceptor[interceptorInCharge].size;
 					IPC3_2Status = 0;
 				}
 				else if (IPC3_2Status == 3)
 				{
+					target.hp -= 1;
+					target.position.x = stage[currentStage].targetPosition[stage[currentStage].maxInterceptorCount- target.hp].x;
+					target.position.y = stage[currentStage].targetPosition[stage[currentStage].maxInterceptorCount - target.hp].y;
+					IPC3_2Status = 1;
 				}
-			
-				/*if(interceptor[interceptorInCharge].position.x < 0 || interceptor[interceptorInCharge].position.x > 1280 ||
-				   interceptor[interceptorInCharge].position.y < 0 || interceptor[interceptorInCharge].position.y > 720)
+
+				for(int i=0;i< stage[currentStage].maxInterceptorCount;i++)
 				{
-					interceptorInCharge += 1;
-					IPC3_2Status = 0;
-				}*/
+					if (interceptor[i].position.x < 0 )
+					{
+						interceptor[i].position.x = 1280;
+					}
+					if ( interceptor[i].position.x > 1280)
+					{
+						interceptor[i].position.x = 0;
+					}
+					if (interceptor[i].position.y < 0 )
+					{
+						interceptor[i].position.y =720;
+					}
+					if (interceptor[i].position.y > 720)
+					{
+						interceptor[i].position.y = 0;
+					}
+				}
 				Novice::ScreenPrintf(0, 20, "theta:%f length:%f", interceptor[interceptorInCharge].direction, length);
 			}
 			else if (inPhaseControll == 3) //sub
@@ -263,6 +352,23 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			else if (inPhaseControll == 5)
 			{
 			}
+
+			if(keys[DIK_1]&& !preKeys[DIK_1])
+			{
+				interceptorInCharge = 0;
+				IPC3_2Status = 2;
+			}
+			if (keys[DIK_2] && !preKeys[DIK_2])
+			{
+				interceptorInCharge = 1;
+				IPC3_2Status = 2;
+			}
+			if (keys[DIK_3] && !preKeys[DIK_3])
+			{
+				interceptorInCharge = 2;
+				IPC3_2Status = 2;
+			}
+
 		}
 		else if (gamePhase == 4)
 		{
@@ -359,7 +465,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 				for (int i = 0; i < stage[currentStage].maxInterceptorCount; i++)
 				{
 					Novice::DrawEllipse((int)interceptor[i].position.x, (int)interceptor[i].position.y, interceptor[i].size, interceptor[i].size, 0.0f, interceptor[i].color, kFillModeSolid);
+					Novice::DrawEllipse((int)interceptor[i].position.x, (int)interceptor[i].position.y, interceptor[i].range, interceptor[i].range, 0.0f, interceptor[i].color- 120-(interceptorTime - interceptorTimer)/2, kFillModeSolid);
 				}
+				Novice::DrawEllipse((int)target.position.x, (int)target.position.y, target.size, target.size, 0.0f, target.color, kFillModeSolid);
+
 				float theta = atan2f((float)(mouse.y - startpoint.y), (float)(mouse.x - startpoint.x));
 				/*float length = (float)sqrt((mouse.y - startpoint.y) * (mouse.y - startpoint.y) + (mouse.x - startpoint.x) * (mouse.x - startpoint.x));
 				if (length > 200)
@@ -373,7 +482,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 				Novice::ScreenPrintf(0, 60, "interceptorInCharge:%d X:%f Y:%f", interceptorInCharge, interceptor[interceptorInCharge].position.x, interceptor[interceptorInCharge].position.y);
 				if (IPC3_2Status == 0)
 				{
-					if (mouseIspressed == 1)
+					if (shotTrigger == 2)
 					{
 						Novice::DrawLine(startpoint.x, startpoint.y, startpoint.x - (int)(length * cosf(theta)), startpoint.y - (int)(length * sinf(theta)), 0xFFFFFFFF);
 					}
